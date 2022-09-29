@@ -1,6 +1,20 @@
-FROM adoptopenjdk/openjdk11:alpine
-RUN addgroup -S spring && adduser -S spring -G spring
-USER spring:spring
+
+# the first stage of our build will extract the layers
+FROM adoptopenjdk/openjdk11:alpine as builder
+WORKDIR application
 ARG JAR_FILE=target/*.jar
-COPY ${JAR_FILE} app.jar
-ENTRYPOINT ["java","-jar","/app.jar"]
+COPY ${JAR_FILE} application.jar
+RUN java -Djarmode=layertools -jar application.jar extract
+
+# the second stage of our build will copy the extracted layers
+FROM adoptopenjdk/openjdk11:alpine
+WORKDIR application
+COPY --from=builder application/dependencies/ ./
+RUN true
+COPY --from=builder application/spring-boot-loader/ ./
+RUN true
+COPY --from=builder application/snapshot-dependencies/ ./
+RUN true
+COPY --from=builder application/application/ ./
+RUN true
+ENTRYPOINT ["java", "org.springframework.boot.loader.JarLauncher"]
